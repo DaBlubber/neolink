@@ -165,6 +165,7 @@ pub(super) async fn make_factory(
                     log::debug!("New client for {name}::{stream}");
                     let camera = camera.clone();
                     let name = name.clone();
+                    let err_name = name.clone();
                     // Process each client sequentially (no tokio::task::spawn) to prevent
                     // concurrent pipeline builds racing on the camera connection and GStreamer
                     // element name registration, which caused SIGSEGV (exit 139) when multiple
@@ -285,7 +286,7 @@ pub(super) async fn make_factory(
                         });
                         AnyResult::<()>::Ok(())
                     }.await {
-                        log::warn!("{name}::{stream}: Client pipeline setup failed: {e:?}");
+                        log::warn!("{err_name}::{stream}: Client pipeline setup failed: {e:?}");
                     }
                 }
             }
