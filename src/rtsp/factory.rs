@@ -165,7 +165,11 @@ pub(super) async fn make_factory(
                     log::debug!("New client for {name}::{stream}");
                     let camera = camera.clone();
                     let name = name.clone();
-                    tokio::task::spawn(async move {
+                    // Process each client sequentially (no tokio::task::spawn) to prevent
+                    // concurrent pipeline builds racing on the camera connection and GStreamer
+                    // element name registration, which caused SIGSEGV (exit 139) when multiple
+                    // RTSP clients connected simultaneously (e.g. HA preview + live view).
+                    if let Err(e) = async {
                         clear_bin(&element)?;
                         log::trace!("{name}::{stream}: Starting camera");
 
@@ -279,8 +283,10 @@ pub(super) async fn make_factory(
                             log::trace!("All media recieved");
                             AnyResult::Ok(())
                         });
-                        AnyResult::Ok(())
-                    });
+                        AnyResult::<()>::Ok(())
+                    }.await {
+                        log::warn!("{name}::{stream}: Client pipeline setup failed: {e:?}");
+                    }
                 }
             }
         }
