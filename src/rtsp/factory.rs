@@ -390,8 +390,24 @@ fn send_to_appsrc(
     let buf = {
         let msg_size = data.len();
 
-        // Get or create a pool of this len
-        let pool = pools.entry(msg_size).or_insert_with_key(|size| {
+        // Compressed video frames have near-continuously varying sizes (variable
+        // bitrate), so keying pools by the exact byte length created a new,
+        // never-evicted BufferPool for every distinct frame size ever seen -
+        // unbounded growth of the `pools` map until the container was OOM-killed.
+        // Bucketing to fixed-size steps bounds the number of distinct pools.
+        const POOL_BUCKET: usize = 8 * 1024;
+        let bucket_size = ((msg_size / POOL_BUCKET) + 1) * POOL_BUCKET;
+
+        // Safety net: if frame sizes are unusually spread out (e.g. resolution
+        // changes) and buckets still accumulate, reset periodically rather than
+        // growing forever. Dropping the pools deactivates and frees them.
+        const MAX_POOLS: usize = 64;
+        if pools.len() >= MAX_POOLS && !pools.contains_key(&bucket_size) {
+            pools.clear();
+        }
+
+        // Get or create a pool for this size bucket
+        let pool = pools.entry(bucket_size).or_insert_with_key(|size| {
             let pool = gstreamer::BufferPool::new();
             let mut pool_config = pool.config();
             // Set a max buffers to ensure we don't grow in memory endlessly
@@ -408,9 +424,13 @@ fn send_to_appsrc(
             let time = ClockTime::from_useconds(ts.as_micros() as u64);
             gst_buf_mut.set_dts(time);
             gst_buf_mut.set_pts(time);
-            let mut gst_buf_data = gst_buf_mut.map_writable().unwrap();
-            gst_buf_data.copy_from_slice(data.as_slice());
-            drop(gst_buf_data);
+            {
+                let mut gst_buf_data = gst_buf_mut.map_writable().unwrap();
+                gst_buf_data[..msg_size].copy_from_slice(data.as_slice());
+            }
+            // Pool buffers are sized to the bucket, not the actual frame - trim
+            // the reported size back down to the real data length.
+            gst_buf_mut.set_size(msg_size);
             new_buf
         };
 
