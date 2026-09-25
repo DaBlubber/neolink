@@ -17,6 +17,18 @@ camera.
 The Neolink project is not affiliated with Reolink in any way; everything it
 does has been reverse engineered.
 
+> **About this fork (DaBlubber/neolink).** This is
+> [QuantumEntangledAndy/neolink](https://github.com/QuantumEntangledAndy/neolink)
+> plus three fixes found while running it 24/7 with several cameras:
+>
+> - serialize RTSP client pipeline builds - concurrent clients could segfault
+>   the process;
+> - bound the `BufferPool` cache - memory kept growing until the OOM killer hit;
+> - a borrow-checker fix in the error log path.
+>
+> Everything else, including the documentation below, is upstream's. Build and
+> configure it exactly as described there.
+
 ## This Fork
 
 This fork is an extension of
